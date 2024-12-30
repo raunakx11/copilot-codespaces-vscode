@@ -1,4 +1,182 @@
-<header>
+from telethon import TelegramClient, events, functions
+from googletrans import Translator  # For translating text
+from datetime import datetime
+import time
+
+# Replace with your API credentials
+api_id = "22814806"
+api_hash = "05c7b09110e0554684f4c6e230907367"
+
+# Initialize the Telegram client
+client = TelegramClient("selfbot", api_id, api_hash)
+translator = Translator()  # Translator instance
+
+# Tracks muted chats
+muted_chats = set()
+
+@client.on(events.NewMessage(outgoing=True))
+async def outgoing_handler(event):
+    global muted_chats
+    command = event.raw_text.strip()
+
+    # Command: .cmd
+    if command == ".cmd":
+        commands_list = (
+            "📜 **Command List:**\n\n"
+            "👋 `.me` - Displays your introduction.\n"
+            "🔇 `.mute` - Mutes the chat.\n"
+            "🔊 `.unmute` - Unmutes the chat.\n"
+            "🚫 `.block` - Blocks a user (reply to the user's message).\n"
+            "✅ `.unblock` - Unblocks a user (reply to the user's message).\n"
+            "🗑 `.del` - Deletes the message.\n"
+            "🧹 `.purge` - Deletes all messages in the chat.\n"
+            "ℹ️ `.info` - Displays user info (reply to a user's message).\n"
+            "🔗 `.gc` - Provides the group link.\n"
+            "📷 `.insta` - Shows the Instagram handle.\n"
+            "⏰ `.time` - Displays the current time.\n"
+            "👨‍💻 `.devloper` - Shows the developer's username.\n"
+            "📨 `.spam <count> <message>` - Sends a message multiple times.\n"
+            "🌐 `.trans <text> (<language>)` - Translates text into the specified language.\n"
+            "❓ `.cmd` - Displays this command list.\n"
+        )
+        await event.edit(commands_list)
+
+    # Command: .me
+    elif command == ".me":
+        await event.edit("👋 Hey, greadIy here!")
+
+    # Command: .mute
+    elif command == ".mute":
+        muted_chats.add(event.chat_id)
+        await event.edit("🔇 This chat is muted. Messages will be deleted after mute.")
+
+    # Command: .unmute
+    elif command == ".unmute":
+        if event.chat_id in muted_chats:
+            muted_chats.remove(event.chat_id)
+            await event.edit("🔊 This chat is now unmuted.")
+        else:
+            await event.edit("This chat is not muted.")
+
+    # Command: .block
+    elif command == ".block":
+        if event.is_reply:
+            user = await (await event.get_reply_message()).get_sender()
+            await client(functions.contacts.BlockRequest(user.id))
+            await event.edit(f"🚫 Blocked {user.first_name}.")
+        else:
+            await event.edit("Reply to a user to block them.")
+
+    # Command: .unblock
+    elif command == ".unblock":
+        if event.is_reply:
+            user = await (await event.get_reply_message()).get_sender()
+            await client(functions.contacts.UnblockRequest(user.id))
+            await event.edit(f"✅ Unblocked {user.first_name}.")
+        else:
+            await event.edit("Reply to a user to unblock them.")
+
+    # Command: .del
+    elif command == ".del":
+        await event.delete()
+
+    # Command: .purge
+    elif command == ".purge":
+        async for message in client.iter_messages(event.chat_id):
+            await message.delete()
+        await event.respond("🧹 Chat purged.")
+
+    # Command: .info
+    elif command == ".info":
+        if event.is_reply:
+            user = await (await event.get_reply_message()).get_sender()
+            user_info = (
+                f"ℹ️ **User Info**:\n\n"
+                f"👤 **ID**: {user.id}\n"
+                f"📛 **Username**: @{user.username}\n"
+                f"📜 **Name**: {user.first_name}\n"
+                f"📞 **Phone**: {user.phone}\n"
+                f"🤖 **Bot**: {'Yes' if user.bot else 'No'}"
+            )
+            await event.edit(user_info)
+        else:
+            await event.edit("Reply to a user to get their info.")
+
+    # Command: .gc
+    elif command == ".gc":
+        await event.edit("🔗 Join here: https://t.me/teamgread")
+
+    # Command: .spam
+    elif command.startswith(".spam"):
+        try:
+            parts = command.split(maxsplit=2)
+            if len(parts) < 3:
+                await event.edit("Usage: .spam <count> <message>")
+                return
+
+            count = int(parts[1])
+            message = parts[2]
+
+            for _ in range(count):
+                await client.send_message(event.chat_id, message)
+            await event.delete()
+        except ValueError:
+            await event.edit("❌ Invalid count. Usage: .spam <count> <message>")
+        except Exception as e:
+            await event.edit(f"⚠️ Error: {e}")
+
+    # Command: .time
+    elif command == ".time":
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        await event.edit(f"⏰ Current time: {now}")
+
+    # Command: .insta
+    elif command == ".insta":
+        await event.edit("📷 @greadIy")
+
+    # Command: .devloper
+    elif command == ".devloper":
+        await event.edit("👨‍💻 @greadIy")
+
+    # Command: .trans
+    elif command.startswith(".trans"):
+        try:
+            parts = command.split(maxsplit=2)
+            if len(parts) < 3:
+                await event.edit("Usage: .trans <text> (<language>)")
+                return
+
+            text, lang = parts[1], parts[2].strip("()")
+            translated = translator.translate(text, dest=lang)
+            await event.edit(f"🌐 Translated to {lang}: {translated.text}")
+        except Exception as e:
+            await event.edit(f"⚠️ Translation Error: {e}")
+
+    # Handle muted chats
+    elif event.chat_id in muted_chats:
+        await event.delete()
+
+@client.on(events.NewMessage(incoming=True))
+async def incoming_handler(event):
+    global muted_chats
+
+    # Automatically delete messages from muted chats (DMs or Groups)
+    if event.chat_id in muted_chats:
+        await event.delete()
+
+@client.on(events.ChatAction())
+async def chat_action_handler(event):
+    """
+    Handles chat actions like someone joining or leaving in a group.
+    """
+    if event.user_added or event.user_joined:
+        # Handle someone being added or joining
+        await event.respond("👋 Welcome to the group! Use commands responsibly.")
+
+# Start the client
+print("Self-bot is running...")
+client.start()
+client.run_until_disconnected()
 
 <!--
   <<< Author notes: Course header >>>
